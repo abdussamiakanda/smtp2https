@@ -2,6 +2,8 @@
 
 **smtp2https** is an SMTP receiver that accepts inbound email and forwards each message to an HTTPS webhook as a JSON `POST`. Routes are defined per recipient domain, so a single instance can serve multiple domains, each with its own endpoint and optional API key.
 
+Repository: [github.com/abdussamiakanda/smtp2https](https://github.com/abdussamiakanda/smtp2https)
+
 ## Features
 
 - Per-domain webhook routing via JSON config or CLI flags
@@ -19,7 +21,7 @@
 ## Installation
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/abdussamiakanda/smtp2https.git
 cd smtp2https
 go mod download
 go build -o smtp2https .

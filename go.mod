@@ -1,4 +1,4 @@
-module github.com/alash3al/smtp2http
+module github.com/abdussamiakanda/smtp2https
 
 go 1.13
 
