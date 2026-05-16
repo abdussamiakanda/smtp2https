@@ -1,4 +1,7 @@
 {
   "example.com": "http://localhost:8080/webhooks/example",
-  "other.org": "http://localhost:8080/webhooks/other"
+  "other.org": {
+    "webhook": "http://localhost:8080/webhooks/other",
+    "api_key": "your-secret-key"
+  }
 }

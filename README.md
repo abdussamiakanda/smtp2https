@@ -16,9 +16,14 @@ Configure one webhook per domain, either with a JSON file or repeated `-route` f
 ```json
 {
   "example.com": "http://localhost:8080/webhooks/example",
-  "other.org": "http://localhost:8080/webhooks/other"
+  "other.org": {
+    "webhook": "https://n8n.example.com/webhook/incoming",
+    "api_key": "your-n8n-webhook-key"
+  }
 }
 ```
+
+Each route is either a webhook URL string, or an object with `webhook` and optional `api_key`. When `api_key` is set, requests include the `X-Api-Key` header.
 
 See `routes.example.json`.
 

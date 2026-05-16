@@ -51,12 +51,12 @@ func main() {
 			jsonData.Addresses.From = transformStdAddressToEmailAddress([]*mail.Address{c.From()})[0]
 			jsonData.Addresses.To = transformStdAddressToEmailAddress([]*mail.Address{c.To()})[0]
 
-			recipientDomain, webhookURL, err := webhookForRecipient(routes, jsonData.Addresses.To.Address)
+			recipientDomain, route, err := routeForRecipient(routes, jsonData.Addresses.To.Address)
 			if err != nil {
 				log.Println(err)
 				return errors.New("Unauthorized TO domain")
 			}
-			log.Printf("delivering mail for %s to %s", recipientDomain, webhookURL)
+			log.Printf("delivering mail for %s to %s", recipientDomain, route.Webhook)
 
 			jsonData.Addresses.Cc = transformStdAddressToEmailAddress(msg.Cc)
 			jsonData.Addresses.Bcc = transformStdAddressToEmailAddress(msg.Bcc)
@@ -89,7 +89,13 @@ func main() {
 				})
 			}
 
-			resp, err := resty.New().R().SetHeader("Content-Type", "application/json").SetBody(jsonData).Post(webhookURL)
+			req := resty.New().R().
+				SetHeader("Content-Type", "application/json").
+				SetBody(jsonData)
+			if route.APIKey != "" {
+				req.SetHeader(apiKeyHeader, route.APIKey)
+			}
+			resp, err := req.Post(route.Webhook)
 			if err != nil {
 				log.Println(err)
 				return errors.New("E1: Cannot accept your message due to internal error, please report that to our engineers")
