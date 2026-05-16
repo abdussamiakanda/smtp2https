@@ -1,0 +1,36 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+/smtp2http
+/smtp2http.exe
+
+# Test binaries and coverage
+*.test
+*.out
+
+# Dependencies (regenerate with go mod vendor)
+/vendor/
+
+# Go workspace
+go.work
+go.work.sum
+
+# Local routes (copy routes.example.json → routes.json)
+routes.json
+
+# Logs from local runs
+*.log
+
+# Build output directory
+/bin/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.idea/
+.vscode/
