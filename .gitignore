@@ -6,6 +6,8 @@
 *.dylib
 /smtp2http
 /smtp2http.exe
+/smtp2https
+/smtp2https.exe
 
 # Test binaries and coverage
 *.test

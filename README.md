@@ -1,100 +1,184 @@
-SMTP2HTTP (email-to-web)
-========================
-smtp2http is a simple SMTP server that forwards incoming email to a webhook as an HTTP POST (JSON). Each recipient domain can use its own webhook URL.
+# smtp2https
 
-Dev
-===
-- `go mod vendor`
-- `go build`
+**smtp2https** is an SMTP receiver that accepts inbound email and forwards each message to an HTTPS webhook as a JSON `POST`. Routes are defined per recipient domain, so a single instance can serve multiple domains, each with its own endpoint and optional API key.
 
-Routes
-======
-Configure one webhook per domain, either with a JSON file or repeated `-route` flags (CLI routes override the file for the same domain).
+## Features
 
-**Config file** (`routes.json`):
+- Per-domain webhook routing via JSON config or CLI flags
+- Optional `X-Api-Key` header for authenticated webhooks
+- Parses headers, body (plain/HTML), and attachments (Base64-encoded in JSON)
+- SPF result included in the payload
+- Rejects mail when the recipient domain is not configured or the webhook does not return HTTP `200`
+
+## Requirements
+
+- Go 1.13 or newer
+- Network access to your webhook endpoints
+- For production on port **25**: root privileges or `CAP_NET_BIND_SERVICE` (ports below 1024)
+
+## Installation
+
+```bash
+git clone <repository-url>
+cd smtp2https
+go mod download
+go build -o smtp2https .
+```
+
+## Configuration
+
+Copy the example routes file and edit it for your environment:
+
+```bash
+cp routes.example.json routes.json
+```
+
+### `routes.json`
+
+Each key is a **recipient domain** (the part after `@` in the RCPT TO address). The value is either a webhook URL string or an object with `webhook` and an optional `api_key`.
 
 ```json
 {
-  "example.com": "http://localhost:8080/webhooks/example",
-  "other.org": {
-    "webhook": "https://n8n.example.com/webhook/incoming",
-    "api_key": "your-n8n-webhook-key"
+  "mail.example.com": "https://api.example.com/email/incoming",
+  "other.example.com": {
+    "webhook": "https://automation.example.com/webhook/incoming",
+    "api_key": "your-secret-key"
   }
 }
 ```
 
-Each route is either a webhook URL string, or an object with `webhook` and optional `api_key`. When `api_key` is set, requests include the `X-Api-Key` header.
+When `api_key` is set, outbound requests include:
 
-See `routes.example.json`.
-
-**CLI routes:**
-
-```
-smtp2http -route=example.com=http://localhost:8080/hooks/example -route=other.org=http://localhost:8080/hooks/other
+```http
+X-Api-Key: <api_key>
+Content-Type: application/json
 ```
 
-**Mixed:**
+CLI `-route` entries override the config file for the same domain but do not support API keys; use `routes.json` when authentication is required.
 
-```
-smtp2http -config=routes.json -route=example.com=http://override.example/hook
-```
+### Command-line flags
 
-Incoming mail is accepted only when the RCPT TO address domain matches a configured route. The message is POSTed to that domain's webhook.
+| Flag | Default | Description |
+|------|---------|-------------|
+| `-config` | *(none)* | Path to `routes.json` |
+| `-route` | *(repeatable)* | `domain=webhookURL` (overrides file for that domain) |
+| `-listen` | `:smtp` | SMTP listen address (use `:25` in production) |
+| `-name` | `smtp2https` | SMTP banner / server name |
+| `-msglimit` | `2097152` | Maximum message size (bytes) |
+| `-timeout.read` | `5` | Read timeout (seconds) |
+| `-timeout.write` | `5` | Write timeout (seconds) |
 
-Optional timeouts make local testing with `telnet` easier:
+Run `./smtp2https -help` for the full list.
 
-```
-smtp2http -config=routes.json -timeout.read=50 -timeout.write=50
-```
+## Running
 
-Telnet example (`telnet localhost 25`):
+### Foreground
 
-```
-HELO zeus
-# smtp answer
-
-MAIL FROM:<email@from.com>
-# smtp answer
-
-RCPT TO:<youremail@example.com>
-# smtp answer
-
-DATA
-your mail content
-.
-
+```bash
+./smtp2https -listen=:25 -config=routes.json
 ```
 
-Usage
-=====
-`smtp2http -listen=:25 -config=routes.json`
-`smtp2http -help`
+### systemd
 
-Testing locally
-===============
-1. Copy `routes.example.json` to `routes.json` and adjust webhook URLs.
-2. Start a mock webhook (returns HTTP 200):
+Create `/etc/systemd/system/smtp2https.service`:
 
-```
-powershell -File scripts/test-webhook.ps1
-```
+```ini
+[Unit]
+Description=smtp2https — SMTP to HTTPS forwarder
+After=network.target
 
-3. In another terminal, run smtp2http on a non-privileged port:
+[Service]
+ExecStart=/opt/smtp2https/smtp2https -listen=:25 -config=/opt/smtp2https/routes.json
+WorkingDirectory=/opt/smtp2https
+Restart=always
+User=root
 
-```
-smtp2http -listen=:2525 -config=routes.json -timeout.read=60 -timeout.write=60
-```
-
-4. Send test mail:
-
-```
-python scripts/send-test-mail.py 127.0.0.1 2525 user@example.com
-python scripts/send-test-mail.py 127.0.0.1 2525 admin@other.org
+[Install]
+WantedBy=multi-user.target
 ```
 
-The mock webhook prints each JSON payload. Mail to an unconfigured domain is rejected.
+Enable and start:
 
-Contribution
-============
-Original repo from @alash3al
-Thanks to @aranajuan
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now smtp2https
+sudo journalctl -u smtp2https -f
+```
+
+Ensure your domain **MX records** point to this host and that port **25** is open in the firewall.
+
+## Webhook behavior
+
+- Method: `POST`
+- Body: JSON representation of the parsed email
+- Success: webhook must respond with **HTTP 200** or the SMTP transaction is rejected
+- Failure: connection errors and non-`200` responses are logged; the sender receives a generic error
+
+## Local testing
+
+Use port **2525** for SMTP so you do not need administrator/root access (port 25 is restricted on Linux, macOS, and Windows).
+
+1. Copy and edit routes: `cp routes.example.json routes.json` — point each domain at `http://127.0.0.1:8080/...` (or your mock path).
+2. **Terminal 1** — start a mock webhook (logs POST bodies, returns HTTP `200`).
+3. **Terminal 2** — run smtp2https.
+4. **Terminal 3** — send a test message.
+
+The recipient domain in RCPT TO (`user@example.com` → `example.com`) must exist as a key in `routes.json`.
+
+### Linux / macOS
+
+**Terminal 1 — mock webhook:**
+
+```bash
+python3 scripts/test-webhook.py 8080
+```
+
+**Terminal 2 — smtp2https:**
+
+```bash
+./smtp2https -listen=:2525 -config=routes.json -timeout.read=60 -timeout.write=60
+```
+
+**Terminal 3 — send mail:**
+
+```bash
+python3 scripts/send-test-mail.py 127.0.0.1 2525 user@example.com
+python3 scripts/send-test-mail.py 127.0.0.1 2525 admin@other.org
+```
+
+Optional webhook check with curl:
+
+```bash
+curl -i -X POST http://127.0.0.1:8080/webhooks/example \
+  -H "Content-Type: application/json" \
+  -d '{"test":true}'
+```
+
+### Windows
+
+**Terminal 1 — mock webhook** (PowerShell):
+
+```powershell
+powershell -File scripts\test-webhook.ps1
+```
+
+Listens on `http://127.0.0.1:8080/` by default. Same behavior as `test-webhook.py`: prints each POST body and returns `200`.
+
+**Terminal 2 — smtp2https:**
+
+```powershell
+.\smtp2https.exe -listen=:2525 -config=routes.json -timeout.read=60 -timeout.write=60
+```
+
+**Terminal 3 — send mail** (Python):
+
+```powershell
+python scripts\send-test-mail.py 127.0.0.1 2525 user@example.com
+python scripts\send-test-mail.py 127.0.0.1 2525 admin@other.org
+```
+
+On Windows you can use `python` or `python3`, depending on your install.
+
+## Acknowledgments
+
+**smtp2https** is derived from [smtp2http](https://github.com/alash3al/smtp2http) by [@alash3al](https://github.com/alash3al).

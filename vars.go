@@ -3,7 +3,7 @@ package main
 import "flag"
 
 var (
-	flagServerName     = flag.String("name", "smtp2http", "the server name")
+	flagServerName     = flag.String("name", "smtp2https", "the server name")
 	flagListenAddr     = flag.String("listen", ":smtp", "the smtp address to listen on")
 	flagRoutesConfig   = flag.String("config", "", "path to JSON file mapping domains to webhook URLs")
 	flagRoutesCLI      = make(routeFlags)
