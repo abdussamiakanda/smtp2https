@@ -107,7 +107,59 @@ sudo systemctl enable --now smtp2https
 sudo journalctl -u smtp2https -f
 ```
 
-Ensure your domain **MX records** point to this host and that port **25** is open in the firewall.
+Open port **25** in the firewall on the host running smtp2https.
+
+### DNS records (production)
+
+For **each domain** that receives mail (every key in `routes.json`), publish DNS at your registrar or DNS provider. Replace `example.com` and `mail.example.com` with your domain and the hostname of the VPS running smtp2https.
+
+#### MX (required)
+
+Mail senders use MX to find your server. Point the domain at the host that listens on port 25.
+
+| Type | Name / Host | Value | Priority |
+|------|-------------|-------|----------|
+| `MX` | `@` (or `example.com`) | `mail.example.com` | `10` |
+
+Also create an **A** (or **AAAA**) record for the mail hostname so it resolves to your server IP:
+
+| Type | Name / Host | Value |
+|------|-------------|-------|
+| `A` | `mail` | `<your-vps-public-ip>` |
+
+After propagation, verify:
+
+```bash
+dig MX example.com +short
+dig A mail.example.com +short
+```
+
+#### TXT — SPF (recommended)
+
+SPF tells other servers which hosts may send mail for your domain. Adjust if you send from other services (Google Workspace, etc.).
+
+| Type | Name / Host | Value |
+|------|-------------|-------|
+| `TXT` | `@` | `v=spf1 mx a:mail.example.com -all` |
+
+#### TXT — DMARC (recommended)
+
+DMARC policy is published on the `_dmarc` subdomain.
+
+| Type | Name / Host | Value |
+|------|-------------|-------|
+| `TXT` | `_dmarc` | `v=DMARC1; p=none; rua=mailto:dmarc-reports@example.com` |
+
+- `p=none` — monitor only (good to start); use `quarantine` or `reject` when you are confident in SPF/DKIM alignment.
+- `rua` — address that receives aggregate DMARC reports.
+
+Verify:
+
+```bash
+dig TXT _dmarc.example.com +short
+```
+
+smtp2https does not set up DNS for you; without a correct **MX** record, inbound mail will not reach the server. SPF and DMARC improve deliverability and reporting but are not enforced by smtp2https itself.
 
 ## Webhook behavior
 
