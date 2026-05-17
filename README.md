@@ -66,7 +66,7 @@ CLI `-route` entries override the config file for the same domain but do not sup
 | `-route` | *(repeatable)* | `domain=webhookURL` (overrides file for that domain) |
 | `-listen` | `:smtp` | SMTP listen address (use `:25` in production) |
 | `-name` | `smtp2https` | SMTP banner / server name |
-| `-msglimit` | `2097152` | Maximum message size (bytes) |
+| `-msglimit` | `26214400` (25 MB) | Maximum message size (bytes) |
 | `-timeout.read` | `5` | Read timeout (seconds) |
 | `-timeout.write` | `5` | Write timeout (seconds) |
 
