@@ -19,11 +19,27 @@ func main() {
 		log.Fatal(err)
 	}
 
+	maxBytes := int(*flagMaxMessageSize)
+	if maxBytes < 1 {
+		log.Fatalf("invalid -msglimit: must be at least 1 byte")
+	}
+
+	log.Printf(
+		"smtp2https: msglimit=%d bytes (%.1f MiB), smtp timeouts read=%ds write=%ds, webhook timeout=%ds",
+		maxBytes,
+		float64(maxBytes)/(1024*1024),
+		*flagReadTimeout,
+		*flagWriteTimeout,
+		*flagWebhookTimeout,
+	)
+
+	httpClient := resty.New().SetTimeout(time.Duration(*flagWebhookTimeout) * time.Second)
+
 	cfg := smtpsrv.ServerConfig{
 		ReadTimeout:     time.Duration(*flagReadTimeout) * time.Second,
 		WriteTimeout:    time.Duration(*flagWriteTimeout) * time.Second,
 		ListenAddr:      *flagListenAddr,
-		MaxMessageBytes: int(*flagMaxMessageSize),
+		MaxMessageBytes: maxBytes,
 		BannerDomain:    *flagServerName,
 		Handler: smtpsrv.HandlerFunc(func(c *smtpsrv.Context) error {
 			msg, err := c.Parse()
@@ -89,9 +105,15 @@ func main() {
 				})
 			}
 
-			req := resty.New().R().
+			payload, err := mergeWebhookPayload(jsonData, route.Extra)
+			if err != nil {
+				log.Println(err)
+				return errors.New("E1: Cannot accept your message due to internal error, please report that to our engineers")
+			}
+
+			req := httpClient.R().
 				SetHeader("Content-Type", "application/json").
-				SetBody(jsonData)
+				SetBody(payload)
 			if route.APIKey != "" {
 				req.SetHeader(apiKeyHeader, route.APIKey)
 			}

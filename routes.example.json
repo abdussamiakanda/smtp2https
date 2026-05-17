@@ -2,6 +2,8 @@
   "example.com": "http://localhost:8080/webhooks/example",
   "other.org": {
     "webhook": "http://localhost:8080/webhooks/other",
-    "api_key": "your-secret-key"
+    "api_key": "your-secret-key",
+    "tenant_id": "other",
+    "source": "smtp2https"
   }
 }

@@ -1,10 +1,29 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"net/mail"
 	"strings"
 )
+
+func mergeWebhookPayload(email EmailMessage, extra map[string]interface{}) (map[string]interface{}, error) {
+	raw, err := json.Marshal(email)
+	if err != nil {
+		return nil, err
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return nil, err
+	}
+
+	for key, value := range extra {
+		payload[key] = value
+	}
+
+	return payload, nil
+}
 
 func recipientDomain(address string) (string, error) {
 	addr, err := mail.ParseAddress(strings.TrimSpace(address))

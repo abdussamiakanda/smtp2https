@@ -37,14 +37,22 @@ cp routes.example.json routes.json
 
 ### `routes.json`
 
-Each key is a **recipient domain** (the part after `@` in the RCPT TO address). The value is either a webhook URL string or an object with `webhook` and an optional `api_key`.
+Each key is a **recipient domain** (the part after `@` in the RCPT TO address). The value is either a webhook URL string or an object with:
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `webhook` | Yes (object form) | HTTPS endpoint for the JSON `POST` |
+| `api_key` | No | Sent as the `X-Api-Key` request header |
+| *any other key* | No | Merged into the **top level** of the webhook JSON body |
 
 ```json
 {
   "mail.example.com": "https://api.example.com/email/incoming",
   "other.example.com": {
     "webhook": "https://automation.example.com/webhook/incoming",
-    "api_key": "your-secret-key"
+    "api_key": "your-secret-key",
+    "tenant_id": "other",
+    "source": "smtp2https"
   }
 }
 ```
@@ -56,7 +64,21 @@ X-Api-Key: <api_key>
 Content-Type: application/json
 ```
 
-CLI `-route` entries override the config file for the same domain but do not support API keys; use `routes.json` when authentication is required.
+The webhook `POST` body is the email payload plus your extra fields at the same level (not nested). Example:
+
+```json
+{
+  "subject": "Hello",
+  "body": { "text": "..." },
+  "addresses": { "from": { }, "to": { } },
+  "tenant_id": "other",
+  "source": "smtp2https"
+}
+```
+
+If an extra field uses the same name as an email field (e.g. `subject`), the value from `routes.json` overrides the email value.
+
+CLI `-route` entries override the config file for the same domain (URL only). Use `routes.json` for `api_key` and extra body fields.
 
 ### Command-line flags
 
@@ -66,11 +88,18 @@ CLI `-route` entries override the config file for the same domain but do not sup
 | `-route` | *(repeatable)* | `domain=webhookURL` (overrides file for that domain) |
 | `-listen` | `:smtp` | SMTP listen address (use `:25` in production) |
 | `-name` | `smtp2https` | SMTP banner / server name |
-| `-msglimit` | `26214400` (25 MB) | Maximum message size (bytes) |
-| `-timeout.read` | `5` | Read timeout (seconds) |
-| `-timeout.write` | `5` | Write timeout (seconds) |
+| `-msglimit` | `26214400` (25 MB) | Maximum **entire** SMTP message size (bytes), including encoded attachments |
+| `-timeout.read` | `120` | SMTP read timeout (seconds); increase for large slow uploads |
+| `-timeout.write` | `120` | SMTP write timeout (seconds) |
+| `-timeout.webhook` | `300` | Webhook HTTP POST timeout (seconds) |
 
 Run `./smtp2https -help` for the full list.
+
+**Message size notes**
+
+- `-msglimit` applies to the full raw email on the wire. A 6 MB file is often ~8 MB after MIME Base64 encoding, plus headers.
+- The webhook JSON can be larger still (attachments are Base64-encoded again in JSON). Ensure n8n/nginx `client_max_body_size` (or equivalent) allows large POST bodies.
+- On startup, smtp2https logs the active `msglimit` and timeouts. If you still see “maximum message size exceeded”, the running binary is likely old or systemd overrides `-msglimit` to a lower value.
 
 ## Running
 
@@ -90,7 +119,7 @@ Description=smtp2https — SMTP to HTTPS forwarder
 After=network.target
 
 [Service]
-ExecStart=/opt/smtp2https/smtp2https -listen=:25 -config=/opt/smtp2https/routes.json
+ExecStart=/opt/smtp2https/smtp2https -listen=:25 -config=/opt/smtp2https/routes.json -msglimit=26214400 -timeout.read=120 -timeout.write=120 -timeout.webhook=300
 WorkingDirectory=/opt/smtp2https
 Restart=always
 User=root

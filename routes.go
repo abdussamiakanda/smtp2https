@@ -11,10 +11,12 @@ import (
 
 const apiKeyHeader = "X-Api-Key"
 
-// Route is the webhook target and optional auth for one domain.
+// Route is the webhook target and optional per-domain options.
+// Extra keys in routes.json (besides webhook and api_key) are merged into the webhook JSON body.
 type Route struct {
 	Webhook string
 	APIKey  string
+	Extra   map[string]interface{}
 }
 
 // routeFlags collects domain=webhook pairs from repeated -route flags (no API key).
@@ -81,11 +83,6 @@ func loadRoutes(configPath string, cliRoutes routeFlags) (map[string]Route, erro
 	return routes, nil
 }
 
-type routeConfig struct {
-	Webhook string `json:"webhook"`
-	APIKey  string `json:"api_key"`
-}
-
 func loadRoutesFile(path string) (map[string]Route, error) {
 	data, err := ioutil.ReadFile(path)
 	if err != nil {
@@ -124,21 +121,53 @@ func parseRouteEntry(value json.RawMessage) (Route, error) {
 		return Route{Webhook: webhookURL}, nil
 	}
 
-	var cfg routeConfig
-	if err := json.Unmarshal(value, &cfg); err != nil {
-		return Route{}, errors.New("expected a webhook URL string or {\"webhook\":\"...\",\"api_key\":\"...\"}")
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(value, &obj); err != nil {
+		return Route{}, errors.New("expected a webhook URL string or {\"webhook\":\"...\", ...}")
 	}
 
-	cfg.Webhook = strings.TrimSpace(cfg.Webhook)
-	cfg.APIKey = strings.TrimSpace(cfg.APIKey)
-	if cfg.Webhook == "" {
+	webhookRaw, ok := obj["webhook"]
+	if !ok {
 		return Route{}, errors.New("webhook is required")
 	}
-	if err := validateWebhook(cfg.Webhook); err != nil {
+
+	var webhook string
+	if err := json.Unmarshal(webhookRaw, &webhook); err != nil {
+		return Route{}, errors.New("webhook must be a string URL")
+	}
+	webhook = strings.TrimSpace(webhook)
+	if webhook == "" {
+		return Route{}, errors.New("webhook is required")
+	}
+	if err := validateWebhook(webhook); err != nil {
 		return Route{}, fmt.Errorf("invalid webhook URL: %w", err)
 	}
 
-	return Route{Webhook: cfg.Webhook, APIKey: cfg.APIKey}, nil
+	var apiKey string
+	if raw, ok := obj["api_key"]; ok {
+		if err := json.Unmarshal(raw, &apiKey); err != nil {
+			return Route{}, errors.New("api_key must be a string")
+		}
+		apiKey = strings.TrimSpace(apiKey)
+	}
+
+	extra := make(map[string]interface{})
+	for key, raw := range obj {
+		if key == "webhook" || key == "api_key" {
+			continue
+		}
+		var v interface{}
+		if err := json.Unmarshal(raw, &v); err != nil {
+			return Route{}, fmt.Errorf("invalid value for field %q", key)
+		}
+		extra[key] = v
+	}
+
+	return Route{
+		Webhook: webhook,
+		APIKey:  apiKey,
+		Extra:   extra,
+	}, nil
 }
 
 func normalizeDomain(domain string) string {
